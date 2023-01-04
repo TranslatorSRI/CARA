@@ -77,7 +77,7 @@ async def entry(message, guid, coalesce_type, caller) -> (dict, int):
     try:
         infer, question_qnode, answer_qnode = examine_query(message)
     except Exception as e:
-        print(e)
+        logger.exception(e)
         return None, 500
 
     # A map from operations advertised in our x-trapi to functions
@@ -197,16 +197,9 @@ async def post_with_callback(host_url, query, guid, params=None):
         # response and then we watch the queue. We give a short 1 min timeout.
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout=60)) as client:
             if params is None:
-                post_response = await client.post(
-                    host_url,
-                    json=query,
-                )
+                post_response = await client.post(host_url, json=query)
             else:
-                post_response = await client.post(
-                    host_url,
-                    json=query,
-                    params=params,
-                )
+                post_response = await client.post(host_url, json=query, params=params)
         # check the response status.
         if post_response.status_code != 200:
             # queue isn't needed for failed service call
@@ -263,10 +256,12 @@ async def assemble_callbacks(guid, num_queries):
 
 
 async def get_pika_connection():
-    q_username = os.environ.get("QUEUE_USER", "guest")
-    q_password = os.environ.get("QUEUE_PW", "guest")
-    q_host = os.environ.get("QUEUE_HOST", "127.0.0.1")
-    connection = await aio_pika.connect_robust(host=q_host, login=q_username, password=q_password)
+    q_username = os.environ.get("RABBITMQ_DEFAULT_USER", "guest")
+    q_password = os.environ.get("RABBITMQ_DEFAULT_PASS", "guest")
+    q_host = os.environ.get("RABBITMQ_HOSTNAME", "127.0.0.1")
+    url = f"amqp://{q_username}:{q_password}@{q_host}/"
+    connection = await aio_pika.connect_robust(url)
+    # connection = await aio_pika.connect_robust(host=q_host, login=q_username, password=q_password)
     return connection
 
 
@@ -377,6 +372,7 @@ async def subservice_post(name, url, message, guid, asyncquery=False, params=Non
 
     try:
         # launch the post depending on the query type and get the response
+        logger.debug(f"{guid}: message: {message}")
         if asyncquery:
             # handle the response
             response = await post_with_callback(url, message, guid, params)
@@ -384,16 +380,9 @@ async def subservice_post(name, url, message, guid, asyncquery=False, params=Non
             # async call to external services with hour timeout
             async with httpx.AsyncClient(timeout=httpx.Timeout(timeout=60 * 60)) as client:
                 if params is None:
-                    response = await client.post(
-                        url,
-                        json=message,
-                    )
+                    response = await client.post(url, json=message)
                 else:
-                    response = await client.post(
-                        url,
-                        json=message,
-                        params=params,
-                    )
+                    response = await client.post(url, json=message, params=params)
 
         # save the response code
         status_code = response.status_code
@@ -523,7 +512,7 @@ def merge_results_by_node_op(message, params, guid) -> (dict, int):
 async def strider(message, params, guid) -> (dict, int):
     # strider_url = os.environ.get("STRIDER_URL", "https://strider-dev.apps.renci.org/1.3/")
     strider_url = os.environ.get("STRIDER_URL", "https://strider.transltr.io/1.3/")
-
+    logger.debug(f"strider_url: {strider_url}")
     # select the type of query post. "test" will come from the tester
     if "test" in message:
         strider_url += "query"
