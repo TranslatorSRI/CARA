@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import yaml
 from fastapi.openapi.utils import get_openapi
@@ -13,7 +14,7 @@ def construct_open_api_schema(APP, description, prefix="", infores=None):
 
     open_api_schema = get_openapi(title=APP.title, version=APP.version, routes=APP.routes)
 
-    open_api_extended_file_path = os.path.join(os.path.dirname(__file__), "../openapi-config.yaml")
+    open_api_extended_file_path = Path(__file__).parent / "resources" / "openapi-config.yaml"
 
     with open(open_api_extended_file_path) as open_api_file:
         open_api_extended_spec = yaml.load(open_api_file, Loader=yaml.SafeLoader)
