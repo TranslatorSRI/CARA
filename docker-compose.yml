@@ -1,0 +1,45 @@
+version: "3"
+services:
+
+#  strider:
+#    container_name: strider
+#    image: ghcr.io/ranking-agent/strider:v4.1.0
+#    environment:
+#      OMNICORP_URL: http://omnicorp-webapi.translator:3210
+#      NORMALIZER_URL: https://nodenormalization-dev.apps.renci.org
+#      KPREGISTRY_URL: https://kp-registry-dev.apps.renci.org
+#    ports:
+#      - "5781:5781"
+#    volumes:
+#      - ./strider-logs:/home/murphy/logs
+
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:3.11.4-management
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - 5672
+      - 15672
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq:rw
+
+  cara:
+    container_name: cara
+    image: cara
+    build: .
+    env_file:
+      - .env
+    expose:
+      - 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - rabbitmq
+
+volumes:
+  rabbitmq:
