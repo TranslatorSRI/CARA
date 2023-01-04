@@ -1,0 +1,21 @@
+{
+  "message": {
+    "query_graph": {
+      "edges": {
+        "e0": {"exclude": false, "predicates": ["biolink:has_real_world_evidence_of_association_with"], "subject": "n0", "object": "n1"},
+        "e1": {"exclude": false, "subject": "n1", "object": "n2"},
+        "e2": {"exclude": false, "subject": "n2", "object": "n3"},
+        "e3": {"exclude": true, "predicates": ["biolink:has_real_world_evidence_of_association_with"], "subject": "n3", "object": "n4"}
+      },
+      "nodes": {
+        "n0": {"ids": ["CURIE_TOKEN"], "is_set": false},
+        "n1": {"categories": ["biolink:ChemicalEntity"], "is_set": false},
+        "n2": {"categories": ["biolink:Gene", "biolink:Protein"], "is_set": false},
+        "n3": {"categories": ["biolink:ChemicalEntity"], "is_set": false},
+        "n4": {"ids": ["CURIE_TOKEN"], "is_set": false}
+      }
+    }
+  },
+  "logs": null,
+  "status": null
+}
