@@ -1,33 +1,17 @@
 # leverage the renci python base image
 FROM renciorg/renci-python-image:v0.0.1
 
-#Set the branch
-ARG BRANCH_NAME=main
+RUN mkdir /code
+WORKDIR /code
 
-# install basic tools
-RUN apt-get update
-
-# make a directory for the repo
-RUN mkdir /repo
-
-# go to the directory where we are going to upload the repo
-WORKDIR /repo
-
-# get the latest code
-RUN git clone --branch $BRANCH_NAME --single-branch https://github.com/ranking-agent/aragorn.git
-
-# go to the repo dir
-WORKDIR /repo/aragorn
+# install library
+COPY ./requirements.txt requirements.txt
+COPY ./src src
 
 # install requirements
 RUN pip install -r requirements.txt
 
-# expose the default port
-EXPOSE 4868
-
-RUN chmod 777 -R .
+RUN chmod 777 ./
 
 USER nru
-
-# start the service entry point
-ENTRYPOINT ["bash", "main.sh"]
+ENTRYPOINT ["uvicorn", "--host", "0.0.0.0", "--port", "8080", "--workers", "5", "src.server:APP"]
