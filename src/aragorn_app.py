@@ -1,8 +1,12 @@
 """aragorn server."""
 import asyncio
+import json
 import os
 import logging.config
+from pathlib import Path
+
 import pkg_resources
+import reasoner_pydantic
 import yaml
 import aio_pika
 from aio_pika.abc import AbstractRobustConnection
@@ -12,9 +16,11 @@ import string
 
 # from pamqp import specification as spec
 from enum import Enum
-from reasoner_pydantic import Query as PDQuery, AsyncQuery as PDAsyncQuery, Response as PDResponse
+from reasoner_pydantic import Query as PDQuery, AsyncQuery as PDAsyncQuery, Response as PDResponse, QNode
 from pydantic import BaseModel
 from fastapi import Body, FastAPI, BackgroundTasks
+from reasoner_pydantic.shared import KnowledgeType
+
 from src.openapi_constructor import construct_open_api_schema
 from src.common import async_query, sync_query
 from src.default_queries import default_input_sync, default_input_async
@@ -23,7 +29,7 @@ from src.default_queries import default_input_sync, default_input_async
 ARAGORN_APP = FastAPI(title="ARAGORN")
 
 # Set up default logger.
-with pkg_resources.resource_stream("src", "logging.yml") as f:
+with open(Path(__file__).parent / "resources" / "logging.yml", "r") as f:
     config = yaml.safe_load(f.read())
 
 # declare the log directory
@@ -64,13 +70,13 @@ class MethodName(str, Enum):
 
 
 # define the default request bodies
-default_request_sync: Body = Body(default=default_input_sync)
+default_request_sync: Body = Body(default=default_input_sync, embed=False)
 default_request_async: Body = Body(default=default_input_async, example=default_input_async)
 
 # get the queue connection params
-q_username = os.environ.get("QUEUE_USER", "guest")
-q_password = os.environ.get("QUEUE_PW", "guest")
-q_host = os.environ.get("QUEUE_HOST", "127.0.0.1")
+q_username = os.environ.get("RABBITMQ_DEFAULT_USER", "guest")
+q_password = os.environ.get("RABBITMQ_DEFAULT_PASS", "guest")
+q_host = os.environ.get("RABBITMQ_HOSTNAME", "127.0.0.1")
 
 
 loop = asyncio.new_event_loop()
@@ -113,13 +119,56 @@ async def async_query_handler(
 
 # synchronous entry point
 @ARAGORN_APP.post("/query", tags=["ARAGORN"], response_model=PDResponse, response_model_exclude_none=True, status_code=200)
-async def sync_query_handler(request: PDQuery = default_request_sync, answer_coalesce_type: MethodName = MethodName.all):
+async def sync_query_handler(query: PDQuery = default_request_sync, answer_coalesce_type: MethodName = MethodName.all):
     """Performs a synchronous query operation which compiles data from numerous ARAGORN ranking agent services.
     The services are called in the following order, each passing their output to the next service as an input:
 
     Strider -> (optional) Answer Coalesce -> ARAGORN-Ranker:omnicorp overlay -> ARAGORN-Ranker:weight correctness -> ARAGORN-Ranker:score
     """
-    return await sync_query(request, answer_coalesce_type, logger, "ARAGORN")
+
+    logger.debug(f"query: {query.json()}")
+
+    potential_object = list(
+        filter(
+            lambda x: "biolink:treats" in x[1].predicates and x[1].knowledge_type.inferred is KnowledgeType.inferred, query.message.query_graph.edges.items()
+        )
+    )
+    obj = potential_object[0][1].object
+    logger.debug(f"obj: {obj}")
+
+    response = None
+    if obj is not None:
+
+        subject_identifier_nodes = list(filter(lambda x: x[0] == obj, query.message.query_graph.nodes.items()))
+        subject_identifier_node_ids_value = subject_identifier_nodes[0][1].ids[0]
+        logger.debug(f"subject_identifier_node_ids_value: {subject_identifier_node_ids_value}")
+
+        path_a_query_file = Path(__file__).parent / "resources" / "path_a.json"
+        with open(path_a_query_file, "r") as rsc:
+            path_a_query_file_text = rsc.read()
+            path_a_query_file_text = path_a_query_file_text.replace("CURIE_TOKEN", subject_identifier_node_ids_value)
+        logger.debug(f"path_a_query_file_text: {path_a_query_file_text}")
+        path_a_query = reasoner_pydantic.message.Query.parse_raw(path_a_query_file_text)
+
+        path_a_response = await sync_query(path_a_query.dict(), answer_coalesce_type, logger, "ARAGORN")
+        path_a_response_json = str(path_a_response.body)
+        logger.debug(f"path_a_response_json: {path_a_response_json}")
+
+        path_b_query_file = Path(__file__).parent / "resources" / "path_b.json"
+        with open(path_b_query_file, "r") as rsc:
+            path_b_query_file_text = rsc.read()
+            path_b_query_file_text = path_b_query_file_text.replace("CURIE_TOKEN", subject_identifier_node_ids_value)
+        logger.debug(f"path_b_query_file_text: {path_b_query_file_text}")
+        path_b_query = reasoner_pydantic.message.Query.parse_raw(path_b_query_file_text)
+
+        secondary_response = await sync_query(path_b_query.dict(), answer_coalesce_type, logger, "ARAGORN")
+        secondary_response_json = str(secondary_response.body)
+        logger.debug(f"secondary_response_json: {secondary_response_json}")
+
+    else:
+        response = await sync_query(query, answer_coalesce_type, logger, "ARAGORN")
+
+    return response
 
 
 @ARAGORN_APP.post("/callback/{guid}", tags=["ARAGORN"], include_in_schema=False)
