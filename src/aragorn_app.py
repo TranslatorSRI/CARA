@@ -20,6 +20,7 @@ from reasoner_pydantic import Query as PDQuery, AsyncQuery as PDAsyncQuery, Resp
 from pydantic import BaseModel
 from fastapi import Body, FastAPI, BackgroundTasks
 from reasoner_pydantic.shared import KnowledgeType
+from starlette.responses import JSONResponse
 
 from src.openapi_constructor import construct_open_api_schema
 from src.common import async_query, sync_query
@@ -143,28 +144,28 @@ async def sync_query_handler(query: PDQuery = default_request_sync, answer_coale
         subject_identifier_node_ids_value = subject_identifier_nodes[0][1].ids[0]
         logger.debug(f"subject_identifier_node_ids_value: {subject_identifier_node_ids_value}")
 
-        path_a_query_file = Path(__file__).parent / "resources" / "path_a.json"
-        with open(path_a_query_file, "r") as rsc:
-            path_a_query_file_text = rsc.read()
-            path_a_query_file_text = path_a_query_file_text.replace("CURIE_TOKEN", subject_identifier_node_ids_value)
-        logger.debug(f"path_a_query_file_text: {path_a_query_file_text}")
-        path_a_query = reasoner_pydantic.message.Query.parse_raw(path_a_query_file_text)
+        def get_canned_query(query_file_path: Path):
+            with open(query_file_path, "r") as rsc:
+                query_file_text = rsc.read()
+                query_file_text = query_file_text.replace("CURIE_TOKEN", subject_identifier_node_ids_value)
+            logger.debug(f"query_file_text: {query_file_text}")
+            query = reasoner_pydantic.message.Query.parse_raw(query_file_text)
+            return query
 
+        path_a_query_file = Path(__file__).parent / "resources" / "path_a.json"
+        path_a_query = get_canned_query(path_a_query_file)
         path_a_response = await sync_query(path_a_query.dict(), answer_coalesce_type, logger, "ARAGORN")
         path_a_response_json = str(path_a_response.body)
         logger.debug(f"path_a_response_json: {path_a_response_json}")
 
         path_b_query_file = Path(__file__).parent / "resources" / "path_b.json"
-        with open(path_b_query_file, "r") as rsc:
-            path_b_query_file_text = rsc.read()
-            path_b_query_file_text = path_b_query_file_text.replace("CURIE_TOKEN", subject_identifier_node_ids_value)
-        logger.debug(f"path_b_query_file_text: {path_b_query_file_text}")
-        path_b_query = reasoner_pydantic.message.Query.parse_raw(path_b_query_file_text)
-
+        path_b_query = get_canned_query(path_b_query_file)
         secondary_response = await sync_query(path_b_query.dict(), answer_coalesce_type, logger, "ARAGORN")
         secondary_response_json = str(secondary_response.body)
         logger.debug(f"secondary_response_json: {secondary_response_json}")
 
+        # TODO merge the results and add to initial query
+        response = JSONResponse(content=query.json(), status_code=200)
     else:
         response = await sync_query(query, answer_coalesce_type, logger, "ARAGORN")
 
