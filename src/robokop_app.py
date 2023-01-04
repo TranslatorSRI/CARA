@@ -1,6 +1,8 @@
 """ROBOKOP"""
 import os
 import logging.config
+from pathlib import Path
+
 import pkg_resources
 import yaml
 
@@ -18,7 +20,7 @@ from src.default_queries import default_input_sync, default_input_async
 ROBOKOP_APP = FastAPI(title="ROBOKOP")
 
 # Set up default logger.
-with pkg_resources.resource_stream("src", "logging.yml") as f:
+with open(Path(__file__).parent / "resources" / "logging.yml", "r") as f:
     config = yaml.safe_load(f.read())
 
 # declare the log directory
